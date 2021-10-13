@@ -1,0 +1,24 @@
+parameters:
+- name: solution
+  type: string
+  default: '.docs/docfx.json'
+- name: pathToPublish
+  type: string
+  default: '$(Build.SourcesDirectory)/$(Build.Repository.Name)/.site/'
+
+steps:
+- task: DocFxTask@0
+  displayName: "Compile DocFx"
+  continueOnError: true
+  condition: succeeded()
+  inputs:
+    solution: '${{ parameters.solution }}'
+    
+- task: PublishBuildArtifacts@1
+  displayName: "Publish DocFx"
+  continueOnError: true
+  condition: succeeded()
+  inputs:
+    PathtoPublish: '${{ parameters.pathToPublish }}'
+    ArtifactName: 'docFx'
+    publishLocation: 'Container'

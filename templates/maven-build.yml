@@ -1,0 +1,29 @@
+parameters:
+- name: mavenPomFile
+  type: string
+  default: '$(Build.SourcesDirectory)/$(Build.Repository.Name)/pom.xml'
+
+steps:
+- task: SonarQubePrepare@4
+  inputs:
+    SonarQube: '$(sq.serviceConnection)'
+    scannerMode: 'Other'
+    projectKey: '$(sq.projectKey)'
+    projectName: '$(sq.projectName)'
+
+- task: Maven@3
+  inputs:
+    mavenPomFile: '${{ parameters.mavenPomFile }}'
+    mavenOptions: '-Xmx3072m'
+    javaHomeOption: 'JDKVersion'
+    jdkVersionOption: '1.11'
+    jdkArchitectureOption: 'x64'
+    publishJUnitResults: true
+    testResultsFiles: '**/surefire-reports/TEST-*.xml'
+    sonarQubeRunAnalysis: true
+    sqMavenPluginVersionChoice: 'latest'
+    goals: 'package'  
+
+- task: SonarQubePublish@4
+  inputs:
+    pollingTimeoutSec: '300'

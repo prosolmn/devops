@@ -1,0 +1,85 @@
+parameters:
+- name: projectName
+  type: string
+  default: '$(Build.DefinitionName)'
+- name: sourcePath
+  type: string
+  default: '$(Build.SourcesDirectory)/$(Build.Repository.Name)'
+- name: sourcePaths
+  type: object
+  default: []
+- name: serviceConnection
+  type: string
+  default: 'blackduck-service-connection'
+- name: testRisk
+  type: boolean
+  default: true
+- name: failTaskOnFailedTests
+  type: boolean
+  default: false
+
+steps:
+- powershell: Write-Host "##vso[task.setvariable variable=versionName;]$(Build.SourceBranchName)"
+  displayName: 'Set [detect.project.version.name] to branch name'
+  condition: or(eq(variables['Build.SourceBranchName'],'develop'),contains(variables['Build.SourceBranch'],'release'))
+
+- powershell: Write-Host "##vso[task.setvariable variable=versionName;]merge"
+  displayName: 'Set [detect.project.version.name] to merge'
+  condition: contains(variables['Build.SourceBranchName'],'merge')
+
+- powershell: Write-Host '##vso[task.setvariable variable=ps;]\'
+  condition: contains(variables['Agent.OS'],'Windows')  
+  displayName: 'Set [path separator] to \'
+
+- powershell: Write-Host '##vso[task.setvariable variable=ps;]/'
+  condition: eq(contains(variables['Agent.OS'],'Windows'),false)
+  displayName: 'Set [path separator] to /'
+
+- ${{ if eq(length(parameters.sourcePaths), 0) }}:
+  - task: SynopsysDetectTask@6
+    displayName: "Synopsys [BlackDuck] Detect: ${{ parameters.sourcePath }}"
+    continueOnError: true
+    condition: and(succeeded(), ne(variables['versionName'], ''), ne('${{ parameters.sourcePath }}',''))
+    inputs:
+        BlackDuckService: $(bd.serviceConnection)
+        DetectVersion: latest
+        DetectFolder: ${{ parameters.sourcePath }}
+        DetectArguments:
+          detect.project.name='${{ parameters.projectName }}'
+          detect.source.path=${{ parameters.sourcePath }}
+          detect.project.version.name='$(versionName)'
+
+- ${{ each path in parameters.sourcePaths }}:  
+  - task: SynopsysDetectTask@6
+    displayName: "Synopsys [BlackDuck] Detect: ${{ path }}"
+    continueOnError: true
+    condition: and(succeeded(), ne(variables['versionName'], ''), ne('${{ path }}',''))
+    inputs:
+        BlackDuckService: $(bd.serviceConnection)
+        DetectVersion: latest
+        DetectFolder: ${{ path }}
+        DetectArguments:
+          detect.project.name='${{ parameters.projectName }}'
+          detect.source.path=${{ path }}
+          detect.project.version.name='$(versionName)'
+
+- task: PowerShell@2
+  displayName: 'Test Soup Risk'
+  condition: and(succeeded(), ne(variables.versionName, ''), eq(${{ parameters.testRisk }}, true))
+  continueOnError: true
+  inputs:
+    filePath: '$(Build.SourcesDirectory)$(ps)infra$(ps)task-scripts$(ps)test-soup-risk.ps1'
+    arguments: '-projectName "${{ parameters.projectName }}" -versionName "$(versionName)" -resultsPath "$(Agent.TempDirectory)$(ps)test-soup-risk"'
+    errorActionPreference: 'continue'
+    pwsh: true
+    showWarnings: true
+  env:
+    BD_APITOKEN: $(bd.apiToken)
+  
+- task: PublishTestResults@2
+  displayName: 'Publish Risk Test Results'
+  condition: and(succeeded(), ne(variables.versionName, ''), eq(${{ parameters.testRisk }}, true))
+  inputs:
+    searchFolder: '$(Agent.TempDirectory)$(ps)test-soup-risk'
+    failTaskOnFailedTests: ${{ parameters.failTaskOnFailedTests }}
+    testRunTitle: 'test-soup-risk'

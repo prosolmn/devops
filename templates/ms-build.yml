@@ -1,0 +1,42 @@
+parameters:
+- name: solution
+  type: string
+  default: '$(Build.SourcesDirectory)/$(Build.Repository.Name)/**/*.sln'
+- name: WarningLevel
+  type: number
+  default: 1
+  values:
+  - 0  #Turns off emission of all warning messages.
+  - 1  #Displays severe warning messages
+  - 2  #Displays level 1 warnings plus certain, less-severe warnings, such as warnings about hiding class members
+  - 3  #Displays level 2 warnings plus certain, less-severe warnings, such as warnings about expressions that always evaluate to true or false
+  - 4  #(the default) Displays all level 3 warnings plus informational warnings
+
+steps:    
+- task: SonarQubePrepare@4
+  inputs:
+    SonarQube: '$(sq.serviceConnection)'
+    scannerMode: 'MSBuild'
+    projectKey: '$(sq.projectKey)'
+    projectName: '$(sq.projectName)'
+
+- task: MSBuild@1
+  displayName: 'MSBuild' 
+  enabled: true
+  continueOnError: true
+  inputs:
+    solution: '${{ parameters.solution }}'
+    clean: true
+    msbuildArguments: '-property:WarningLevel=${{ parameters.warningLevel }}'
+
+- task: SonarQubeAnalyze@4
+  displayName: 'SonarQube Analyze' 
+  enabled: true
+  continueOnError: true
+
+- task: SonarQubePublish@4
+  displayName: 'SonarQube Publish' 
+  enabled: true
+  continueOnError: true
+  inputs:
+    pollingTimeoutSec: '300'

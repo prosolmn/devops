@@ -1,0 +1,1 @@
+curl "https://prophecyportal.wright.com/users"

@@ -1,0 +1,57 @@
+parameters:
+- name: buildProject
+  type: string
+  default: '**/*.csproj'
+- name: testProject
+  type: string
+  default: ''
+- name: testAssembly
+  type: string 
+  default: |
+    **\**.dll
+    !**\obj\**
+    !**\xunit.runner.visualstudio.testadapter.dll
+    !**\xunit.runner.visualstudio.dotnetcore.testadapter.dll
+
+steps:    
+- task: SonarQubePrepare@4
+  inputs:
+    SonarQube: '$(sq.serviceConnection)'
+    scannerMode: 'MSBuild'
+    projectKey: '$(sq.projectKey)'
+    projectName: '$(sq.projectName)'
+
+- task: DotNetCoreCLI@2
+  displayName: 'Build Service'
+  inputs:
+    command: 'build'
+    arguments: '--configuration $(buildConfiguration)'
+    projects: |
+      ${{ parameters.buildProject }}
+      ${{ parameters.testProject }}
+        
+- task: SonarQubeAnalyze@4
+  displayName: 'SonarQube Analyze' 
+  enabled: true
+  continueOnError: true
+
+- task: SonarQubePublish@4
+  displayName: 'SonarQube Publish' 
+  enabled: true
+  continueOnError: true
+  inputs:
+    pollingTimeoutSec: '300'
+
+- task: VSTest@2
+  displayName: 'Test Run'
+  condition: and(succeeded(), ne('${{ parameters.testProject }}', ''))
+  inputs:
+    testSelector: 'testAssemblies'
+    testAssemblyVer2: |
+        ${{ parameters.testAssembly }}
+
+- task: PublishTestResults@2
+  condition: and(succeededOrFailed(), ne('${{ parameters.testProject }}', '')) 
+  inputs:
+    testResultsFormat: 'xUnit' # Options: JUnit, NUnit, VSTest, xUnit
+    testResultsFiles: '**/TEST-*.xml'

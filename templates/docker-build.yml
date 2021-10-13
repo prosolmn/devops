@@ -1,0 +1,89 @@
+parameters:
+- name: dockerFile
+  type: string
+  default: '**/Dockerfile'
+- name: buildContext
+  type: string
+  default: '**'
+- name: imageName
+  type: string
+  default: '$(Build.DefinitionName)'
+- name: imageTag
+  type: string
+  default: $(Build.BuildNumber)
+- name: awsCredentials
+  type: string
+  default: 'aws-ecr-publish-dev'
+- name: pushImage
+  type: boolean
+  default: true
+- name: failTaskOnFailedTests
+  type: boolean
+  default: false
+  
+steps:
+- powershell: |
+    $lcaseImageName = ("${{ parameters.imageName }}").ToLower()
+    Write-Host "##vso[task.setvariable variable=lcaseImageName]${lcaseImageName}"
+    Write-Host "variable get lcaseImageName ${env:LCASEIMAGENAME}"
+  continueOnError: true
+
+- task: Docker@2
+  displayName: Build Docker Image
+  condition: succeeded()
+  inputs:
+    command: 'build'
+    buildContext: '${{ parameters.buildContext }}'
+    Dockerfile: '${{ parameters.dockerFile }}'
+    repository: $(lcaseImageName)
+    tags: |
+      $(Build.BuildNumber)
+      latest
+
+- task: Docker@2
+  displayName: Save docker image to tar file
+  condition: succeeded()
+  inputs:
+    repository: '$(lcaseImageName)'
+    command: 'save'
+    arguments: '--output $(Build.ArtifactStagingDirectory)/$(lcaseImageName).tar $(lcaseImageName):latest $(lcaseImageName):${{ parameters.imageTag }}'
+
+- task: PublishBuildArtifacts@1
+  displayName: Publish image artifact
+  condition: succeeded()
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)/$(lcaseImageName).tar'
+    ArtifactName: '$(lcaseImageName)-image-tar'
+    publishLocation: 'Container'
+
+- task: ECRPushImage@1
+  displayName: Push Docker Image to AWS
+  condition: and(succeeded(),eq(${{ parameters.pushImage }},'true'))
+  inputs:
+    awsCredentials: '${{ parameters.awsCredentials }}'
+    regionName: 'us-east-1'
+    imageSource: 'imagename'
+    sourceImageName: $(lcaseImageName)
+    sourceImageTag: ${{ parameters.imageTag }}
+    repositoryName: $(lcaseImageName)
+
+- task: PowerShell@2
+  displayName: 'aws-ecr-image-scan'
+  continueOnError: true
+  condition: and(succeeded(),eq(${{ parameters.pushImage }},'true'))
+  inputs:
+    filePath: '$(Build.SourcesDirectory)/infra/task-scripts/aws-ecr-image-scan.ps1'
+    arguments: '-repoName "$(lcaseImageName)" -tag "${{ parameters.imageTag }}" -resultsPath "$(Agent.TempDirectory)/aws-ecr-image-scan"'
+    errorActionPreference: 'continue'
+    pwsh: true
+    showWarnings: true
+  env:
+    AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+
+- task: PublishTestResults@2
+  displayName: 'Publish Test Results'
+  condition: and(succeeded(),eq(${{ parameters.pushImage }},'true'))
+  inputs:
+    searchFolder: '$(Agent.TempDirectory)/aws-ecr-image-scan'
+    failTaskOnFailedTests: ${{ parameters.failTaskOnFailedTests }}
+    testRunTitle: 'aws-ecr-image-scan'

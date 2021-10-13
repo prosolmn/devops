@@ -1,0 +1,77 @@
+parameters:
+- name: additionalCmdArgs
+  type: string 
+  default: '-quit'
+- name: appName
+  type: string
+- name: buildTarget
+  type: string
+  values:
+  - standalone
+  - Win
+  - Win64
+  - OSXUniversal
+  - Linux
+  - Linux64
+  - LinuxUniversal
+  - iOS
+  - Android
+  - Web
+  - WebStreamed
+  - WebGL
+  - XboxOne
+  - PS4
+  - WindowsStoreApps
+  - Switch
+  - N3DS
+  - tvOS
+- name: outputPath
+  type: string
+  default: '$(Build.ArtifactStagingDirectory)'
+- name: UnityAppIntegrationVersion
+  type: string
+  default: '1.0.0-alpha2989'
+- name: UnityAppIntegrationPath
+  type: string
+  default: '$(Build.SourcesDirectory)/$(Build.Repository.Name)/Assets/Plugins/UnityAppIntegration'
+  
+steps:    
+- task: DownloadPackage@1
+  displayName: 'Download UnityAppIntegration Package v${{ parameters.UnityAppIntegrationVersion }}'
+  inputs:
+    feed: '/f1a55da3-26eb-41b9-b130-1884ff018180'
+    definition: '0bf9ed50-c44a-4194-8a96-110ab8e35611'
+    version: '${{ parameters.UnityAppIntegrationVersion }}'
+    downloadPath: '${{ parameters.UnityAppIntegrationPath }}'
+      
+- task: UnityBuildTask@3
+  displayName: 'Inline Addressables Build Script'
+  inputs:
+    unityProjectPath: "$(Build.SourcesDirectory)/$(Build.Repository.Name)"
+    buildTarget: '${{ parameters.buildTarget }}'
+    buildScriptType: 'inline'
+    outputFileName: '${{ parameters.appName }}'
+    inlineBuildScript: |        
+      using System;
+      using System.IO;
+      using UnityEditor;
+      using UnityEditor.AddressableAssets;
+      using UnityEditor.AddressableAssets.Settings;
+      
+      public class Builder {
+      public static void BuildAddressables() {
+      AddressableAssetSettings.CleanPlayerContent(AddressableAssetSettingsDefaultObject.Settings.ActivePlayerDataBuilder);
+      AddressableAssetSettings.BuildPlayerContent();
+      }
+      }
+    scriptExecuteMethod: 'Builder.BuildAddressables'
+    additionalCmdArgs: ${{ parameters.additionalCmdArgs }}
+
+- task: UnityBuildTask@3
+  displayName: Standalone '${{ parameters.buildTarget }}' Build
+  inputs:
+    unityProjectPath: "$(Build.SourcesDirectory)/$(Build.Repository.Name)"
+    buildTarget: '${{ parameters.buildTarget }}'
+    outputPath: '${{ parameters.outputPath }}'
+    outputFileName: '${{ parameters.appName }}'
+    additionalCmdArgs: ${{ parameters.additionalCmdArgs }}

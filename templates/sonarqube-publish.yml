@@ -1,0 +1,12 @@
+steps:
+- task: SonarQubeAnalyze@4
+  displayName: 'SonarQube Analyze' 
+  enabled: true
+  continueOnError: true
+
+- task: SonarQubePublish@4
+  displayName: 'SonarQube Publish' 
+  enabled: true
+  continueOnError: true
+  inputs:
+    pollingTimeoutSec: '300'
